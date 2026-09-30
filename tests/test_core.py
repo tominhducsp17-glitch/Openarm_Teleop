@@ -61,10 +61,25 @@ def test_frame_convention():
     kin = ArmKinematics("right")
     k0 = kin.keypoints(np.zeros(7))
     assert k0["wrist"][2] < k0["elbow"][2] < k0["shoulder"][2]          # tay thả xuôi
+    # Ở zero-pose, tâm J7 -> đầu kẹp phải nằm trên trục dọc; dùng gốc J6
+    # làm "wrist" sẽ tạo một độ gãy giả 37.5 mm trong hình que.
+    hand = k0["tool"] - k0["wrist"]
+    assert abs(hand[0]) < 1e-6 and abs(hand[1]) < 1e-6 and hand[2] < 0
     q = np.zeros(7); q[3] = np.pi / 2
     k1 = kin.keypoints(q)
     assert k1["wrist"][0] - k1["elbow"][0] > 0.15                          # gập khuỷu -> cẳng tay ra +x (trước)
     assert kin.keypoints(np.zeros(7))["shoulder"][1] < 0                   # tay phải ở phía −y
+
+
+def test_display_zero_pose_is_collinear():
+    """Offset lắp motor không được tạo độ gập giả trong stick-model."""
+    kin = ArmKinematics("right")
+    k = kin.display_keypoints(np.zeros(7))
+    upper = unit(k["elbow"] - k["shoulder"])
+    fore = unit(k["wrist"] - k["elbow"])
+    hand = unit(k["tool"] - k["wrist"])
+    assert np.allclose(upper, fore, atol=1e-6)
+    assert np.allclose(fore, hand, atol=1e-6)
 
 
 # ---------------- retarget ----------------
@@ -151,9 +166,21 @@ def test_joint_filter_holds_low_conf_and_rejects_jump():
     assert held[0] and out2[0] == pytest.approx(out[0])
 
 
+def test_joint_filter_can_accept_large_step_immediately():
+    jf = JointFilter(1, 1000.0, 0.0, [0.0], jump_deg=30, min_conf=0.0,
+                     reject_jumps=False)
+    jf(np.array([0.0]), np.array([1.0]), 0.0)
+    out, held = jf(np.array([2.0]), np.array([1.0]), 0.01)
+    assert not held[0]
+    assert out[0] > 1.5
+
+
 # ---------------- an toàn ----------------
-def make_gate():
+def make_gate(velocity_limit_enabled=True):
     cfg = load_config()
+    cfg["safety"]["velocity_limit_enabled"] = velocity_limit_enabled
+    if velocity_limit_enabled and cfg["safety"]["engage_blend_s"] <= 0:
+        cfg["safety"]["engage_blend_s"] = 1.5
     kins = {s: ArmKinematics(s) for s in ("right", "left")}
     g = SafetyGate(kins, cfg["safety"])
     g.reset({s: np.zeros(8) for s in kins})
@@ -173,6 +200,15 @@ def test_gate_holds_until_engaged_and_limits_velocity():
         cmd = g.step(0.01, t)
     assert cmd["right"][0] <= np.deg2rad(45) * 3.0 + 1e-9        # không nhanh hơn 45 độ/s
     assert cmd["right"][0] > 0.5
+
+
+def test_gate_can_send_target_without_velocity_or_step_limit():
+    g = make_gate(velocity_limit_enabled=False)
+    tgt = {s: np.array([0.8, 0, 0, 0, 0, 0, 0, 0.5]) for s in g.sides}
+    g.engage(0.0)
+    g.set_target(tgt, 0.01)
+    cmd = g.step(0.01, 0.01)
+    assert cmd["right"][0] == pytest.approx(0.8)
 
 
 def test_gate_deadman():

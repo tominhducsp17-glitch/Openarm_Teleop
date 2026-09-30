@@ -44,13 +44,14 @@ class JointFilter:
     """Lọc một vector góc (rad). Cấu hình theo từng phần tử."""
 
     def __init__(self, n, min_cutoff, beta, deadband_deg, jump_deg=35.0, jump_hold_s=0.2,
-                 min_conf=0.6):
+                 min_conf=0.6, reject_jumps=True):
         as_list = lambda v: list(v) if np.ndim(v) else [v] * n
         self.n = n
         self.f = [OneEuro(mc, b) for mc, b in zip(as_list(min_cutoff), as_list(beta))]
         self.dead = np.deg2rad(as_list(deadband_deg))
         self.jump = np.deg2rad(jump_deg)
         self.jump_hold_s = jump_hold_s
+        self.reject_jumps = bool(reject_jumps)
         self.min_conf = min_conf
         self.reset()
 
@@ -70,7 +71,8 @@ class JointFilter:
                 self.held[i] = True
                 self.jump_since[i] = None
                 continue
-            if self.raw[i] is not None and abs(xi - self.raw[i]) > self.jump:
+            if (self.reject_jumps and self.raw[i] is not None and
+                    abs(xi - self.raw[i]) > self.jump):
                 if self.jump_since[i] is None:
                     self.jump_since[i] = t
                 if t - self.jump_since[i] < self.jump_hold_s:

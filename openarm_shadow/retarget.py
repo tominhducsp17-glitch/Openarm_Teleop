@@ -48,9 +48,10 @@ class ArmRetargeter:
         self.q_neutral = np.zeros(7) if q_neutral is None else np.asarray(q_neutral, float)
         self.set_hand_neutral(DEFAULT_HAND_NEUTRAL if hand_neutral is None else hand_neutral)
 
-    def set_hand_neutral(self, H_neutral):
-        """H_neutral: hướng bàn tay người khi robot ở q_neutral. Có thể đo lại bằng phím 'c'."""
-        self.R_offset = np.asarray(H_neutral).T @ self.kin.R0(self.q_neutral, 7)
+    def set_hand_neutral(self, H_neutral, q_reference=None):
+        """Căn hướng tay người hiện tại với một tư thế robot có J5–J7 trung tính."""
+        q_ref = self.q_neutral if q_reference is None else np.asarray(q_reference, float)
+        self.R_offset = np.asarray(H_neutral).T @ self.kin.R0(q_ref, 7)
 
     # ------------------------------------------------------------------
     def _pick(self, cands, q_prev, ia, ib):

@@ -178,3 +178,16 @@ def test_enable_refuses_when_zero_is_wrong(robot):
     with pytest.raises(RobotFault):
         r.enable()
     assert not hw.enabled
+
+
+def test_encoder_limits_follow_software_zero_offset(monkeypatch):
+    """Zero J4 âm phải được giữ nguyên, không bị chốt encoder clip về 0°."""
+    oa = make_fake_openarm_can()
+    monkeypatch.setitem(sys.modules, "openarm_can", oa)
+    from openarm_shadow.robot.openarm_can_robot import OpenArmCANRobot
+    cfg = load_config()["robot"]
+    cfg["urdf_to_motor"]["right"]["offset_deg"] = [0, 0, 0, -4.5, 0, 0, 0]
+    r = OpenArmCANRobot(cfg, ["right"])
+    arm = r.arms["right"]
+    assert np.rad2deg(arm.mlo[3]) == pytest.approx(-4.5)
+    assert np.rad2deg(arm.to_motor(np.zeros(7))[3]) == pytest.approx(-4.5)

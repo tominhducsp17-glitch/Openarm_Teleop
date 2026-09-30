@@ -1,7 +1,9 @@
 mediapipe==0.10.21   # kèm opencv-contrib-python; bản 0.10.21 có wheel cho Python 3.12
 numpy
+scipy
 pyyaml
 pytest
 # tuỳ chọn:
 # pin                # Pinocchio, cho bù trọng lực (robot.gravity_comp)
 # openarm_can        # cài bằng apt: sudo apt install python3-openarm-can
+# pyrealsense2       # tuỳ chọn: Intel RealSense D455 (--source realsense)

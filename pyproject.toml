@@ -3,7 +3,10 @@ name = "openarm_shadow"
 version = "0.1.0"
 description = "Teleop OpenArm v1.0 bằng camera 2D (MediaPipe + retarget kiểu SEW-Mimic)"
 requires-python = ">=3.10"
-dependencies = ["mediapipe==0.10.21", "numpy", "pyyaml"]
+dependencies = ["mediapipe==0.10.21", "numpy", "pyyaml", "scipy"]
+
+[project.optional-dependencies]
+realsense = ["pyrealsense2==2.58.1.10581"]
 
 [tool.setuptools]
 packages = ["openarm_shadow", "openarm_shadow.robot"]

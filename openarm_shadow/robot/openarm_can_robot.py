@@ -37,8 +37,12 @@ class _Arm:
         m = rcfg["urdf_to_motor"][side]
         self.sign = np.asarray(m["sign"], float)
         self.offset = np.deg2rad(np.asarray(m["offset_deg"], float))
-        lim = np.deg2rad(np.asarray(rcfg["motor_limits_deg"][side], float))
-        self.mlo, self.mhi = lim[:, 0], lim[:, 1]
+        # motor_limits_deg mô tả dải cơ khí theo góc URDF. Khi encoder có offset
+        # phần mềm, giới hạn cuối ở miền encoder cũng phải được biến đổi tương tự;
+        # nếu không, vd J4 zero=-4.5° sẽ bị clip thành 0° ngay lúc enable.
+        lim_urdf = np.deg2rad(np.asarray(rcfg["motor_limits_deg"][side], float))
+        lim_motor = self.sign[:, None] * lim_urdf + self.offset[:, None]
+        self.mlo, self.mhi = np.min(lim_motor, axis=1), np.max(lim_motor, axis=1)
         self.kp = np.asarray(rcfg["kp"], float)
         self.kd = np.asarray(rcfg["kd"], float)
         g = rcfg["gripper"]
@@ -165,6 +169,7 @@ class OpenArmCANRobot:
         self.sides = list(sides)
         self.arms = {s: _Arm(s, rcfg) for s in self.sides}
         self.enabled = False
+        self.pre_enabled = False  # enable_all chỉ để đánh thức encoder, chưa gửi MIT target
         self.returning = False          # True khi đang về tư thế nghỉ: đọc hỏng không dừng giữa chừng
         self.t_enable = 0.0
         self.q_connect = {}
@@ -179,8 +184,23 @@ class OpenArmCANRobot:
         """Đọc tư thế khi motor còn tắt (2 lần đọc khớp nhau). Trả về trạng thái theo góc URDF."""
         for s, a in self.arms.items():
             a.drain()
-            self.q_connect[s] = a.read_consistent().copy()
-            a.check_fresh()
+            try:
+                self.q_connect[s] = a.read_consistent().copy()
+                a.check_fresh()
+            except RobotFault:
+                # Một số firmware ngừng trả lời refresh sau disable_all(). Đánh
+                # thức motor ở chế độ mềm (chưa có MIT target), rồi mới đọc pose.
+                # Đây cũng là hành vi của tools/bringup/read_joints.py --enable.
+                try:
+                    a.arm.enable_all()
+                    time.sleep(0.1)
+                    a.drain()
+                    self.q_connect[s] = a.read_consistent().copy()
+                    a.check_fresh()
+                    self.pre_enabled = True
+                except Exception:
+                    a.arm.disable_all()
+                    raise
         bad = self.out_of_range()
         if bad:
             print("CẢNH BÁO: góc motor nằm ngoài giới hạn, zero của motor có thể sai -> KHÔNG được bật motor:")
@@ -189,7 +209,7 @@ class OpenArmCANRobot:
         return self.read()
 
     def out_of_range(self, tol_deg=5.0):
-        """Các khớp có góc motor đo được nằm ngoài robot.motor_limits_deg (± tol).
+        """Các khớp có góc encoder nằm ngoài dải cơ khí đã đổi qua sign/offset (± tol).
 
         Tay thả xuôi mà đọc ra vd J1 = 178° nghĩa là zero của motor sai (chưa hiệu chuẩn hoặc hiệu chuẩn bị mất).
         Nếu vẫn bật motor, lệnh đầu tiên bị kẹp vào giới hạn và tay sẽ quay một góc rất lớn."""
@@ -237,6 +257,7 @@ class OpenArmCANRobot:
                 a.arm.disable_all()
             raise
         self.enabled, self.t_enable = True, time.monotonic()
+        self.pre_enabled = False
 
     def send(self, cmd):
         if not self.enabled:
@@ -282,6 +303,11 @@ class OpenArmCANRobot:
         try:
             self.relax()
         finally:
+            if self.pre_enabled:
+                for a in self.arms.values():
+                    a.arm.disable_all()
+                    a.arm.recv_all(2000)
+                self.pre_enabled = False
             self.enabled = False
             n = self.rejected_reads()
             if any(n.values()):

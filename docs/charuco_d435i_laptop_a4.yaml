@@ -1,0 +1,11 @@
+paper: A4 landscape
+dpi: 300
+print_scale_percent: 100
+outer_board_width_mm: 280.0
+outer_board_height_mm: 200.0
+dictionary: DICT_5X5_1000
+squares_x: 7
+squares_y: 5
+square_length_m: 0.04
+marker_length_m: 0.03
+print_dpi: 300

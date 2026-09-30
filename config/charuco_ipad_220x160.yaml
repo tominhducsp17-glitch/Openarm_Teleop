@@ -1,0 +1,8 @@
+# Overlay khi hiển thị board trên iPad.
+# Đo vùng bàn cờ (không tính viền trắng): xấp xỉ 220 x 160 mm.
+# Least-squares cho board 7 x 5 ô: (7*220 + 5*160)/(7^2 + 5^2) = 31.6216 mm/ô.
+fusion:
+  calibration:
+    charuco:
+      square_length_m: 0.0316216
+      marker_length_m: 0.0237162

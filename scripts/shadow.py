@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Chạy teleop bắt chước tay.
 
-    python scripts/shadow.py                      # webcam 0, robot mô phỏng (an toàn, nên chạy trước)
-    python scripts/shadow.py --source video.mp4   # chạy trên video quay sẵn
+    python scripts/shadow.py                      # RealSense D435i RGB-D, robot mô phỏng
+    python scripts/shadow.py --config config/camera_laptop_rgb.yaml --arms right  # laptop RGB-only
     python scripts/shadow.py --robot openarm --dry-run   # đọc robot thật, motor TẮT (kiểm tra chiều khớp)
     python scripts/shadow.py --robot openarm --config config/first_real.yaml --arms right   # lần chạy thật đầu
     python scripts/shadow.py --config my.yaml --record run1.npz
@@ -19,9 +19,13 @@ from openarm_shadow.config import load_config
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", default=None, help="chỉ số webcam, đường dẫn video hoặc URL luồng")
+    ap.add_argument("--source", default=None,
+                    help="nguồn camera; dùng 'realsense' hoặc alias 'd435i'/'d455' cho RealSense RGB-D")
     ap.add_argument("--robot", choices=["sim", "openarm"], default="sim")
-    ap.add_argument("--config", default=None)
+    ap.add_argument(
+        "--config", action="append", default=None,
+        help="file YAML; có thể lặp lại, file sau ghi đè file trước",
+    )
     ap.add_argument("--mode", choices=["direct", "mirror"], default=None)
     ap.add_argument("--arms", default=None, help="vd: right hoặc right,left")
     ap.add_argument("--record", default=None, help="lưu mục tiêu + lệnh ra file .npz")

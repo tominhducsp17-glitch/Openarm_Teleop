@@ -34,9 +34,8 @@ bằng `tools/bringup/read_joints.py`. Bảng chiều đúng:
 | Gập khuỷu (J4) | dương | dương | khớp |
 | J5, J6, J7 | so với `scripts/check_kinematics.py` / viewer MuJoCo v1 | | **chưa đo** |
 
-Cột cuối là kết quả đo tay khi làm bài múa Thái Cực (taichi_player, trên WSL2): J1–J4 trùng quy ước URDF/MJCF,
-nên `sign = 1`, `offset = 0` là đúng cho J1–J4. Vẫn đọc lại một lần trên Ubuntu native, vì thứ tự can0/can1 có thể đổi
-khi cắm lại USB. J5–J7 phải đo trước khi dùng cổ tay: khớp nào ngược thì đặt sign = -1, lệch 0 thì đặt offset.
+Cột cuối là kết quả đo tay khi làm bài múa Thái Cực (taichi_player, trên WSL2). Trên Ubuntu native, chiều J1–J7
+của tay phải đã được xác minh là `sign = +1`; thứ tự can0/can1 vẫn cần kiểm tra lại khi đổi dây USB-CAN.
 
 **Zero motor sai.** Tay thả xuôi mà `read_joints.py` đọc ra góc lớn (vd ngày 28/09 tay trái đọc J1 ≈ 178°,
 J2 ≈ 181°, J5 ≈ −65°, kẹp ≈ 54°) nghĩa là zero của motor sai, không phải lệch vài độ. Khi đó `shadow.py` sẽ báo
@@ -49,7 +48,15 @@ openarm-can-zero-position-calibration --canport can1 --arm-side left_arm --robot
 
 Công cụ này bật motor và đẩy từng khớp vào giới hạn cơ khí (tay quét rộng, cả phía sau): dọn trống quanh tay ~1 m,
 có người cầm E-stop, báo nhóm trước vì nó ghi vào motor. Lệch nhỏ (vài độ) thì không cần hiệu chuẩn lại: đặt
-`robot.urdf_to_motor.offset_deg` = góc đọc được khi tay đúng tư thế 0.
+`robot.urdf_to_motor.offset_deg` = góc đọc được khi tay đúng tư thế 0. Với profile D455, capture tự động bằng:
+
+```bash
+python tools/bringup/capture_zero_pose.py --iface can0 --side right \
+  --config config/d455_wrist_real.yaml
+```
+
+Công cụ chỉ đọc khi motor tắt, lấy median 100 mẫu trong 2 giây, từ chối ghi nếu robot chuyển động/mất CAN và lưu
+vào `config/calibration/right_zero.yaml`. Nó không gọi lệnh zero của firmware motor.
 
 ## 4. Lần chạy thật đầu tiên
 ```bash
@@ -65,6 +72,12 @@ engage chậm 3 s.
 - `q` = về tư thế nghỉ rồi tắt motor. Không rút nguồn khi tay đang giơ.
 - Ổn rồi mới: tay trái (`--arms left`), rồi hai tay, rồi nới giới hạn (quay về config/default.yaml), rồi J5–J7 sau khi
   đã kiểm tra chiều bằng dry-run.
+
+Sau khi đã xác minh zero và chiều J5–J7 bằng dry-run, dùng `config/d455_wrist_real.yaml` cho lượt thử xoay tay phải.
+Profile này mở toàn bộ dải cơ khí chính thức của tay phải và dùng tốc độ vận hành
+J1–J7 = 45, 45, 60, 60, 90, 90, 90°/s sau khi đã hoàn tất lượt xác minh phần cứng.
+Không dùng profile này nếu hình que xanh lá trong dry-run quay ngược robot thật ở bất kỳ khớp J5–J7 nào.
+Profile tự nạp offset mới nhất từ `config/calibration/right_zero.yaml`; không ghi lại zero motor.
 
 ## 5. Những gì CHƯA có
 - Bù trọng lực tắt mặc định. Không bù, với kp = 70 tay giơ ngang có thể võng khoảng 8° (ước tính từ mô men

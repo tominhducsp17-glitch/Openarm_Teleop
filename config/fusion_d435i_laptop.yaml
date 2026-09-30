@@ -1,0 +1,81 @@
+# MVP fusion đơn giản:
+# - laptop chính diện = tracking primary (Pose + tay phải);
+# - D435i bên phải khoảng 30 độ = Hand + depth auxiliary/metric reference.
+# Hai camera phải cố định ở 640x480 sau khi calibration.
+camera:
+  required_source: realsense
+  mirror_display: false
+  realsense:
+    serial: "243122071323"
+    width: 640
+    height: 480
+    fps: 30
+    require_usb3: true
+    # Realtime wrist: patch median + palm-plane robust fit đã khử outlier;
+    # bỏ spatial/disparity pass để RGB-D capture tiến gần 30 FPS hơn.
+    spatial_filter: false
+    temporal_filter: true
+
+models:
+  # Laptop: Hand ở mọi inference frame; Pose mỗi 2 frame và cache xen kẽ.
+  pose_interval: 2
+
+fusion:
+  primary_id: d435i
+  laptop_id: laptop
+  laptop_index: 0
+  laptop_width: 640
+  laptop_height: 480
+  laptop_fps: 30
+  max_pair_delta_ms: 35
+  inference_history: 20
+  pair_history_window_s: 0.12
+  calibration_file: config/calibration/d435i_laptop.yaml
+  calibration:
+    target_pairs: 30
+    min_common_corners: 10
+    capture_interval_s: 0.55
+    novelty_px: 12
+    quality:
+      max_laptop_rms_px: 1.2
+      max_stereo_rms_px: 1.5
+      max_epipolar_p95_px: 2.0
+      min_baseline_m: 0.05
+      max_baseline_m: 2.0
+    charuco:
+      dictionary: DICT_5X5_1000
+      squares_x: 7
+      squares_y: 5
+      square_length_m: 0.04
+      marker_length_m: 0.03
+      print_dpi: 300
+  robust:
+    realtime_enabled: false  # realtime wrist dùng weighted DLT; optimizer giữ cho offline benchmark
+    lambda_reprojection: 1.0
+    lambda_depth: 2.0
+    lambda_bone: 0.7
+    lambda_temporal: 0.35
+    reprojection_sigma_px: 3.0
+    depth_sigma_m: 0.018
+    bone_sigma_m: 0.006
+    temporal_base_sigma_m: 0.008
+    temporal_speed_m_s: 1.5
+    loss: huber
+    loss_scale: 1.0
+    # 6 vòng đủ cho orientation MVP; 12 vòng làm UI nghẽn 192–330 ms khi CPU
+    # đồng thời chạy hai MediaPipe model nhưng chỉ cải thiện reprojection ~1 px.
+    max_nfev: 6
+    bone_adapt_alpha: 0.01
+    depth_confidence_scale_m: 0.04
+    reprojection_confidence_px: 8.0
+    min_point_confidence: 0.20
+  orientation_fusion:
+    min_fused_confidence: 0.12
+    temporal_weight: 1.5
+    switch_score_margin: 0.15
+    switch_frames: 3
+    physical_switch_deg: 100
+    max_source_disagreement_deg: 70
+    output_smoothing: 0.65
+    tracking_confidence: 0.35
+    hold_frames: 12

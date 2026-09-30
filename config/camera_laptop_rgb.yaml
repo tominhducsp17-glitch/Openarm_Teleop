@@ -1,0 +1,11 @@
+# Camera laptop RGB-only. Orientation lấy từ MediaPipe hand world landmarks.
+# Mode này cố định suốt phiên; không tìm hoặc chuyển sang RealSense depth.
+
+camera:
+  index: 0
+  required_source: null
+  width: 1280
+  height: 720
+
+orientation:
+  source: rgb_world

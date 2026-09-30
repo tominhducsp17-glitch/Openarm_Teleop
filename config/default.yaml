@@ -1,15 +1,63 @@
 # Cấu hình mặc định. Đơn vị góc: độ (deg) trừ khi ghi khác.
 
 camera:
-  index: 0            # webcam laptop; điện thoại: dùng app kiểu DroidCam/IP Webcam rồi đặt URL ở đây
+  index: realsense    # pipeline một camera dùng RGB-D từ RealSense D4xx
+  required_source: realsense
   width: 1280
   height: 720
   mirror_display: true   # chỉ lật ảnh khi HIỂN THỊ, MediaPipe luôn chạy trên ảnh gốc
+  realsense:
+    serial: null         # để null nếu chỉ có một RealSense
+    width: 640
+    height: 480
+    fps: 30
+    require_usb3: true    # profile chuẩn/D455: báo lỗi rõ nếu dây chỉ enumerate USB 2.x
+    patch_radius: 3      # median vùng 7x7 quanh landmark
+    min_depth_m: 0.3
+    max_depth_m: 6.0
+    max_local_delta_m: 0.15  # bỏ nền khác cụm depth tại landmark quá 15 cm
+    spatial_filter: true      # edge-preserving filter của librealsense
+    temporal_filter: true     # ổn định depth giữa các frame
+    hand_patch_radius: 2      # patch 5x5: nhỏ hơn body để tránh trộn nền ở cạnh ngón
+    hand_min_direct_points: 4 # tối thiểu điểm depth thật để fit z MediaPipe -> metric
+    hand_model_hold_frames: 6 # giữ scale/offset metric ngắn hạn khi stereo có lỗ; sau đó báo NONE
+    palm_min_points: 35       # số pixel point-cloud tối thiểu để fit mặt phẳng lòng bàn tay
+    palm_depth_band_m: 0.06   # bỏ nền/foreground lệch median palm quá 6 cm
+    palm_plane_max_rms_m: 0.012
+    palm_axis_length_m: 0.08  # chiều dài trục debug vẽ trên ảnh
+
+orientation:
+  source: depth_required   # cố định cả phiên: RealSense mất depth thì HOLD/NONE, không fallback RGB
+  reacquire_frames: 1        # nhận lại ngay; continuity quaternion vẫn chặn flip
+  hold_frames: 6             # giữ hướng cũ ngắn hạn khi plane/landmark lỗi
+  smoothing: 0.55            # SLERP cơ sở; tự tăng khi người dùng xoay nhanh
+  fast_smoothing: 0.90       # bám nhanh khi góc thay đổi lớn
+  fast_angle_deg: 75
+  max_jump_deg: 155          # chỉ loại gần-flip; 70° trước đây làm trục đứng lại khi xoay nhanh
+  min_open_fingers: 3        # chỉ cập nhật hướng khi bàn tay xòe
+  body_smoothing: 0.35       # giữ body frame liên tục khi vai/hông depth chập chờn
+  body_max_jump_deg: 45
 
 models:
   pose: models/pose_landmarker_full.task
   hand: models/hand_landmarker.task
   min_conf: 0.5
+  # Pose và Hands là hai detector độc lập. Giữ pose rất ngắn khi pose hụt một
+  # vài frame để một detection tay tốt không bị xoá theo.
+  pose_hold_frames: 6
+  hand_association_radius_shoulders: 0.50
+
+calibration:
+  hand_auto:
+    enabled: true
+    hold_s: 0.6
+    min_samples: 5
+    max_motion_deg: 12
+    min_open_fingers: 4      # bốn ngón chính; thumb không dùng vì góc tự nhiên biến thiên lớn
+    max_upper_from_down_deg: 70  # cho phép tay dang khỏi thân nhưng khuỷu vẫn thấp hơn vai
+    max_fore_from_down_deg: 80   # cho phép khuỷu thả lỏng; cổ tay vẫn thấp hơn khuỷu
+    max_palm_from_camera_deg: 50 # pháp tuyến lòng bàn tay hướng về RealSense
+    auto_engage_sim_s: 3.0       # chỉ simulation: giữ READY liên tục rồi tự engage
 
 mapping:
   # direct: tay phải người -> tay phải robot (như đứng "bên trong" robot)
@@ -28,6 +76,7 @@ filter:
   deadband_deg: [1.5, 1.5, 2.5, 1.5, 3, 3, 3, 0]   # phần tử kẹp tính theo đơn vị 0..1 (0 = tắt)
   jump_deg: 35
   jump_hold_s: 0.2
+  reject_jumps: false          # không giữ/chặn target chỉ vì bước góc lớn
   min_conf: 0.6
 
 grip:
@@ -35,10 +84,11 @@ grip:
   open_ratio: 0.9     # khi xoè = kẹp mở hết
 
 safety:
+  velocity_limit_enabled: false # gửi thẳng target; max_vel bên dưới chỉ dùng khi bật lại
   max_vel_deg_s: [45, 45, 60, 60, 90, 90, 90]
   grip_vel_per_s: 1.5
   deadman_s: 0.4
-  engage_blend_s: 1.5
+  engage_blend_s: 0.0
   # Giới hạn khớp mềm theo góc URDF. Mặc định = giới hạn của LeRobot openarm_follower (bảo thủ).
   soft_limits_deg:
     right: [[-75, 75], [-9, 90], [-85, 85], [0, 135], [-85, 85], [-40, 40], [-80, 80]]
@@ -49,6 +99,7 @@ safety:
     radius_m: {upper: 0.05, fore: 0.045, hand: 0.05}
 
 robot:
+  zero_calibration_file: null  # YAML offset encoder->URDF; được merge sau profile
   interfaces: {right: can0, left: can1}   # quy ước cũ của nhóm; kiểm tra lại bằng read_joints.py
   control_hz: 100
   gain_ramp_s: 1.0
@@ -67,7 +118,8 @@ robot:
   urdf_to_motor:
     right: {sign: [1, 1, 1, 1, 1, 1, 1], offset_deg: [0, 0, 0, 0, 0, 0, 0]}
     left:  {sign: [1, 1, 1, 1, 1, 1, 1], offset_deg: [0, 0, 0, 0, 0, 0, 0]}
-  # Chốt chặn cuối ở mức motor (LeRobot openarm_follower)
+  # Dải cơ khí theo góc URDF (LeRobot openarm_follower); backend đổi qua sign/offset
+  # trước khi dùng làm chốt encoder cuối.
   motor_limits_deg:
     right: [[-75, 75], [-9, 90], [-85, 85], [0, 135], [-85, 85], [-40, 40], [-80, 80]]
     left:  [[-75, 75], [-90, 9], [-85, 85], [0, 135], [-85, 85], [-40, 40], [-80, 80]]

@@ -1,0 +1,33 @@
+# D455 + tay phải OpenArm: lượt xác minh teleop xoay cổ tay J5-J7.
+#
+# Điều kiện trước khi chạy thật:
+#   1. Đọc thụ động đủ 7 khớp qua CAN.
+#   2. Dùng --dry-run xác nhận chiều và zero J5-J7.
+#   3. Đã chạy ổn config/first_real.yaml với J1-J4.
+#
+# Profile này dùng toàn bộ dải góc cơ khí chính thức của OpenArm cho tay phải.
+# config/first_real.yaml không bị thay đổi và vẫn là đường quay lại.
+
+safety:
+  # Fusion hai camera có thể chuyển HOLD -> TRACKING với target cách xa vài độ.
+  # Giới hạn tốc độ vừa phải để robot không nhận toàn bộ bước đó trong một tick.
+  velocity_limit_enabled: true
+  max_vel_deg_s: [30, 30, 45, 50, 70, 70, 80]
+  engage_blend_s: 1.0
+  soft_limits_deg:
+    # Không còn giới hạn thử nghiệm bảo thủ; đây là toàn bộ dải cơ khí chính thức.
+    #        J1          J2          J3          J4          J5          J6          J7
+    right: [[-75, 75], [-9, 90], [-85, 85], [0, 135], [-85, 85], [-40, 40], [-80, 80]]
+    # Chưa mở cổ tay trái trong lượt này.
+    left:  [[-45, 10], [-45, 0], [-30, 30], [0, 90], [0, 0], [0, 0], [0, 0]]
+
+robot:
+  zero_calibration_file: config/calibration/right_zero.yaml
+  park_vel_deg_s: 15
+
+filter:
+  # Chặn spike đơn-frame của IK; chuyển động thật lặp lại sẽ được nhận sau 0.12 s
+  # rồi SafetyGate đưa tới robot theo giới hạn tốc độ phía trên.
+  reject_jumps: true
+  jump_deg: 45
+  jump_hold_s: 0.12

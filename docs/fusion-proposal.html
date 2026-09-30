@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Proposal fusion RGB-D D455 và camera RGB cho OpenArm teleoperation">
+  <title>OpenArm Teleoperation — RGB-D Multi-view Fusion Proposal</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071018;
+      --surface: #0d1b27;
+      --surface-2: #122536;
+      --ink: #edf7ff;
+      --muted: #9db2c2;
+      --line: rgba(168, 207, 229, .18);
+      --cyan: #4ed7df;
+      --blue: #65a9ff;
+      --green: #73e2a7;
+      --orange: #ffbd6b;
+      --red: #ff7c82;
+      --purple: #bd9cff;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .32);
+      --radius: 24px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at 12% 18%, rgba(78, 215, 223, .12), transparent 30rem),
+        radial-gradient(circle at 88% 80%, rgba(101, 169, 255, .10), transparent 34rem),
+        var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body { overflow: hidden; }
+
+    a { color: var(--cyan); text-underline-offset: 3px; }
+    strong { color: #fff; font-weight: 650; }
+    em { color: var(--orange); font-style: normal; }
+
+    .deck {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: clamp(18px, 2.4vh, 30px);
+      padding: clamp(28px, 4.2vw, 72px) clamp(28px, 5.4vw, 92px) clamp(62px, 7vh, 82px);
+      opacity: 0;
+      transform: translateX(28px) scale(.992);
+      pointer-events: none;
+      transition: opacity .26s ease, transform .26s ease;
+      overflow: auto;
+    }
+
+    .slide.active {
+      opacity: 1;
+      transform: none;
+      pointer-events: auto;
+    }
+
+    .slide.dense {
+      gap: 12px;
+      padding-top: 26px;
+      padding-bottom: 56px;
+    }
+    .slide.dense h2 { font-size: clamp(29px, 3.35vw, 48px); }
+    .slide.dense th, .slide.dense td {
+      padding: 7px 12px;
+      font-size: clamp(12px, 1.02vw, 15px);
+      line-height: 1.28;
+    }
+    .slide.dense .callout { margin-top: 10px; padding: 10px 15px; font-size: 14px; }
+
+    .slide-kicker {
+      color: var(--cyan);
+      font-size: clamp(12px, 1.15vw, 17px);
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 1050px;
+      margin-bottom: 24px;
+      font-size: clamp(42px, 6.5vw, 92px);
+      line-height: .98;
+      letter-spacing: -.052em;
+    }
+
+    h2 {
+      margin-bottom: 0;
+      font-size: clamp(30px, 4.2vw, 60px);
+      line-height: 1.02;
+      letter-spacing: -.038em;
+    }
+
+    h3 {
+      margin-bottom: 10px;
+      font-size: clamp(16px, 1.55vw, 23px);
+      line-height: 1.2;
+    }
+
+    p, li, td, th {
+      font-size: clamp(14px, 1.22vw, 19px);
+      line-height: 1.48;
+    }
+
+    .lede {
+      max-width: 900px;
+      color: var(--muted);
+      font-size: clamp(18px, 2vw, 29px);
+      line-height: 1.42;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 24px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .content {
+      align-self: center;
+      width: 100%;
+    }
+
+    .grid-2, .grid-3, .grid-4 {
+      display: grid;
+      gap: clamp(14px, 1.6vw, 24px);
+    }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card {
+      background: linear-gradient(150deg, rgba(18, 37, 54, .92), rgba(10, 25, 37, .86));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: clamp(18px, 2vw, 30px);
+      box-shadow: var(--shadow);
+    }
+
+    .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+    .card p { color: var(--muted); }
+    .accent-cyan { border-top: 3px solid var(--cyan); }
+    .accent-blue { border-top: 3px solid var(--blue); }
+    .accent-green { border-top: 3px solid var(--green); }
+    .accent-orange { border-top: 3px solid var(--orange); }
+    .accent-red { border-top: 3px solid var(--red); }
+    .accent-purple { border-top: 3px solid var(--purple); }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 3px 6px 3px 0;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(78, 215, 223, .09);
+      color: #dffcff;
+      border: 1px solid rgba(78, 215, 223, .2);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      align-items: stretch;
+      gap: 10px;
+    }
+
+    .node {
+      min-height: 112px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(18, 37, 54, .82);
+      border: 1px solid var(--line);
+      text-align: center;
+      font-size: clamp(12px, 1vw, 16px);
+    }
+
+    .node b { display: block; margin-bottom: 5px; color: #fff; }
+    .node small { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .arrow { align-self: center; color: var(--cyan); font-size: 24px; text-align: center; }
+
+    .equation {
+      margin: 14px 0;
+      padding: 16px 18px;
+      overflow-x: auto;
+      background: rgba(2, 10, 16, .52);
+      border-left: 3px solid var(--cyan);
+      border-radius: 5px 16px 16px 5px;
+      color: #f8fcff;
+      font-family: "Cambria Math", "STIX Two Math", Georgia, serif;
+      font-size: clamp(16px, 1.55vw, 25px);
+      line-height: 1.55;
+      white-space: nowrap;
+    }
+
+    .equation .subline {
+      display: block;
+      color: var(--muted);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      font-size: 13px;
+      white-space: normal;
+    }
+
+    ul.clean {
+      margin: 0;
+      padding-left: 1.2em;
+    }
+    ul.clean li { margin: 8px 0; }
+    ul.clean li::marker { color: var(--cyan); }
+
+    .callout {
+      margin-top: 18px;
+      padding: 16px 20px;
+      border-radius: 16px;
+      background: rgba(115, 226, 167, .08);
+      border: 1px solid rgba(115, 226, 167, .2);
+      color: #dbffeb;
+      font-size: clamp(14px, 1.2vw, 18px);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 18px;
+      background: rgba(10, 25, 37, .74);
+    }
+    th, td {
+      padding: 13px 15px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+    th { color: var(--cyan); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; }
+    td { color: var(--muted); }
+    tr:last-child td { border-bottom: 0; }
+
+    .tag-reuse { color: var(--green); }
+    .tag-adapt { color: var(--orange); }
+    .tag-own { color: var(--purple); }
+
+    .camera-stage {
+      display: grid;
+      grid-template-columns: 1fr 1.3fr 1fr;
+      align-items: center;
+      gap: 18px;
+      min-height: 310px;
+      padding: 26px;
+      border-radius: var(--radius);
+      background:
+        linear-gradient(rgba(101, 169, 255, .05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(101, 169, 255, .05) 1px, transparent 1px),
+        rgba(5, 15, 24, .58);
+      background-size: 32px 32px;
+      border: 1px solid var(--line);
+    }
+    .camera, .subject {
+      padding: 22px;
+      border-radius: 20px;
+      text-align: center;
+      border: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .camera::before { content: "◉"; display: block; color: var(--cyan); font-size: 40px; }
+    .subject::before { content: "◇"; display: block; color: var(--orange); font-size: 56px; }
+    .ray { color: var(--cyan); text-align: center; font-size: 14px; }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .stack-row {
+      display: grid;
+      grid-template-columns: 180px 1fr 150px;
+      gap: 14px;
+      align-items: center;
+      padding: 13px 16px;
+      border-radius: 14px;
+      background: rgba(18, 37, 54, .67);
+      border: 1px solid var(--line);
+    }
+    .stack-row span:last-child { color: var(--muted); text-align: right; font-size: 13px; }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .02em;
+    }
+
+    .controls {
+      position: fixed;
+      z-index: 10;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      background: rgba(7, 16, 24, .88);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(14px);
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 8px 13px;
+      background: var(--surface-2);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover, button:focus-visible { background: #1a354a; outline: 2px solid var(--cyan); outline-offset: 2px; }
+    .counter { min-width: 72px; color: var(--muted); text-align: center; font-size: 13px; }
+
+    .progress {
+      position: fixed;
+      z-index: 11;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 4px;
+      background: rgba(255,255,255,.06);
+    }
+    .progress > div {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--cyan), var(--blue));
+      transition: width .25s ease;
+    }
+
+    .refs { columns: 2; column-gap: 34px; }
+    .refs li { break-inside: avoid; margin-bottom: 13px; color: var(--muted); }
+
+    @media (max-width: 900px) {
+      .grid-3, .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); }
+      .stack-row { grid-template-columns: 1fr; }
+      .stack-row span:last-child { text-align: left; }
+    }
+
+    @media (max-width: 650px) {
+      body { overflow: auto; }
+      .slide { padding-inline: 20px; }
+      .grid-2, .grid-3, .grid-4, .camera-stage { grid-template-columns: 1fr; }
+      .ray { transform: rotate(90deg); }
+      .refs { columns: 1; }
+      table { display: block; overflow-x: auto; }
+    }
+
+    @media print {
+      @page { size: 16in 9in; margin: 0; }
+      body { overflow: visible; background: var(--bg); }
+      .deck { width: auto; height: auto; }
+      .slide {
+        position: relative;
+        width: 16in;
+        height: 9in;
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+        overflow: hidden;
+        page-break-after: always;
+      }
+      .controls, .progress { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-live="polite">
+    <section class="slide active" data-title="Thiết lập và pipeline">
+      <header>
+        <div class="slide-kicker">01 · Phạm vi hệ thống và pipeline fusion</div>
+        <h2>D455 RGB-D + laptop RGB</h2>
+      </header>
+      <div class="content">
+        <div class="grid-3" style="margin-bottom: 16px;">
+          <article class="card accent-cyan"><h3>D455 phía trước</h3><p>RGB + aligned depth, camera tham chiếu <strong>T<sub>D←D</sub>=I</strong>. Đã có 21 điểm metric và palm-plane fit.</p></article>
+          <article class="card accent-orange"><h3>Laptop góc 35–45°</h3><p>RGB view hỗ trợ khi D455 nhìn bàn tay edge-on. Hai camera hard-fix; extrinsic <strong>T<sub>D←L</sub></strong> từ ChArUco.</p></article>
+          <article class="card accent-red"><h3>Failure cần xử lý</h3><p>Ngón bị che, depth lẫn nền và hai nghiệm <strong>±normal</strong> làm cổ tay J5–J7 đôi khi gập sai chiều.</p></article>
+        </div>
+        <div class="flow">
+          <div class="node"><b>Capture</b><small>D455 RGB-D<br>+ laptop RGB</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><b>2D observation</b><small>MediaPipe 21 điểm<br>confidence + visibility</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><b>Time pairing</b><small>timestamp buffer<br>nearest/interpolate</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><b>Geometry fusion</b><small>weighted triangulation<br>+ D455 depth residual</small></div>
+        </div>
+        <div class="flow" style="margin-top: 10px; grid-template-columns: repeat(7, minmax(0, 1fr));">
+          <div class="node"><b>Robust constraints</b><small>reprojection<br>bone length + outliers</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><b>Palm frame</b><small>axes + two normal hypotheses</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><b>Temporal inference</b><small>continuity + angular velocity<br>state confidence</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><b>Robot retarget</b><small>J5–J7 target<br>hold/degrade on uncertainty</small></div>
+        </div>
+        <div class="callout"><strong>Output:</strong> 21 điểm 3D + confidence/covariance + palm quaternion + orientation confidence + source diagnostics + timestamp. MediaPipe dùng thống nhất trên cả hai RGB; chưa dùng OpenPose/ROS 2.</div>
+      </div>
+      <footer class="footer-note">Fusion không lấy trung bình đơn giản: mỗi observation mang trọng số và residual riêng.</footer>
+    </section>
+
+    <section class="slide" data-title="Camera model">
+      <header>
+        <div class="slide-kicker">02 · Hình học camera</div>
+        <h2>Calibration biến hai ảnh thành các ràng buộc cùng hệ D455</h2>
+      </header>
+      <div class="content grid-2">
+        <article class="card accent-cyan">
+          <h3>Mô hình chiếu</h3>
+          <div class="equation">s<sub>i</sub> ũ<sub>ij</sub> = K<sub>i</sub> [ R<sub>i</sub> | t<sub>i</sub> ] X̃<sub>j</sub> = P<sub>i</sub>X̃<sub>j</sub></div>
+          <p><strong>u<sub>ij</sub></strong>: landmark j trên camera i; <strong>X<sub>j</sub></strong>: điểm 3D cần tìm trong hệ D455; <strong>P<sub>i</sub></strong>: projection matrix sau calibration.</p>
+        </article>
+        <article class="card accent-blue">
+          <h3>Weighted DLT khởi tạo</h3>
+          <div class="equation">X̂<sub>j</sub><sup>DLT</sup> = arg min<sub>‖X̃‖=1</sub> ‖W<sub>j</sub>A<sub>j</sub>X̃‖²</div>
+          <p>Mỗi view sinh hai hàng của <strong>A</strong>. Trọng số không cố định 90/10; nó được tính lại theo từng camera, landmark và frame.</p>
+        </article>
+        <article class="card accent-orange" style="grid-column: 1 / -1;">
+          <h3>ChArUco calibration</h3>
+          <p>OpenCV cung cấp intrinsic, distortion và stereo extrinsic. Sau calibration, toàn bộ điểm được undistort trước khi triangulate; reprojection dùng lại đúng distortion model để đo residual trên ảnh gốc.</p>
+        </article>
+      </div>
+      <footer class="footer-note">Calibration error phải được lưu cùng profile; di chuyển camera làm profile mất hiệu lực.</footer>
+    </section>
+
+    <section class="slide" data-title="Trọng số động">
+      <header>
+        <div class="slide-kicker">03 · Không phải phép trung bình</div>
+        <h2>Confidence động theo camera × landmark × thời điểm</h2>
+      </header>
+      <div class="content grid-2">
+        <article class="card accent-green">
+          <h3>Trọng số quan sát 2D</h3>
+          <div class="equation">w<sub>ij</sub> = c<sub>mp</sub> · c<sub>sync</sub> · c<sub>geom</sub> · c<sub>vis</sub> · c<sub>history</sub></div>
+          <ul class="clean">
+            <li><strong>c<sub>mp</sub></strong>: score MediaPipe.</li>
+            <li><strong>c<sub>sync</sub></strong>: giảm khi lệch timestamp.</li>
+            <li><strong>c<sub>geom</sub></strong>: giảm khi hai tia gần song song.</li>
+            <li><strong>c<sub>vis</sub></strong>: occlusion/edge-on/out-of-frame.</li>
+            <li><strong>c<sub>history</sub></strong>: tương thích với vận tốc trước đó.</li>
+          </ul>
+        </article>
+        <article class="card accent-cyan">
+          <h3>Độ tin cậy depth D455</h3>
+          <div class="equation">w<sub>dj</sub> = c<sub>valid</sub> · exp(−σ<sub>patch</sub>²/τ<sub>σ</sub>²) · c<sub>edge</sub></div>
+          <ul class="clean">
+            <li>Depth hợp lệ trong khoảng đo.</li>
+            <li>Patch có median ổn định, ít lẫn nền.</li>
+            <li>Giảm trọng số gần depth discontinuity/biên ngón.</li>
+            <li>Không có depth tốt ⇒ vẫn triangulate từ RGB views.</li>
+          </ul>
+        </article>
+      </div>
+      <footer class="footer-note">Weight clipping và normalization ngăn một confidence score chưa calibrate chi phối toàn bộ nghiệm.</footer>
+    </section>
+
+    <section class="slide" data-title="Tối ưu RGB-D">
+      <header>
+        <div class="slide-kicker">04 · Hàm mục tiêu fusion</div>
+        <h2>Tối ưu robust: reprojection + depth + cấu trúc tay + thời gian</h2>
+      </header>
+      <div class="content">
+        <div class="equation">
+          X̂<sub>t</sub> = arg min<sub>X</sub> Σ<sub>i,j</sub> ρ( w<sub>ij</sub> ‖π(P<sub>i</sub>,X<sub>j</sub>)−u<sub>ij</sub>‖² )
+          + λ<sub>d</sub>Σ<sub>j</sub>ρ( w<sub>dj</sub>(e<sub>z</sub><sup>T</sup>X<sub>j</sub><sup>D</sup>−z<sub>j</sub>)² )
+          + λ<sub>b</sub>E<sub>bone</sub> + λ<sub>t</sub>E<sub>time</sub>
+          <span class="subline">ρ: Huber/Cauchy robust loss · π: phép chiếu camera · X<sup>D</sup>: điểm biểu diễn trong hệ D455</span>
+        </div>
+        <div class="grid-4">
+          <article class="card accent-blue"><h3>Reprojection</h3><p>Hai view cùng giải thích một điểm 3D; residual lớn làm giảm/bỏ observation.</p></article>
+          <article class="card accent-cyan"><h3>Depth</h3><p>Neo nghiệm theo metric z của D455 khi depth đáng tin.</p></article>
+          <article class="card accent-orange"><h3>Bone</h3><p><strong>E<sub>bone</sub> = Σ(‖X<sub>a</sub>−X<sub>b</sub>‖−L<sub>ab</sub>)²</strong> giữ hình dạng bàn tay hợp lý.</p></article>
+          <article class="card accent-purple"><h3>Temporal</h3><p><strong>E<sub>time</sub> = Σ‖X<sub>j,t</sub>−X̂<sub>j,t|t−1</sub>‖²</strong> hạn chế nghiệm nhảy.</p></article>
+        </div>
+        <div class="callout">Khởi tạo bằng weighted DLT, sau đó refine bằng nonlinear least-squares robust. Không tối ưu lại toàn lịch sử để giữ latency thấp.</div>
+      </div>
+      <footer class="footer-note">Nếu chỉ một camera hợp lệ, hệ thống chuyển sang D455 RGB-D mode với uncertainty cao hơn thay vì giả vờ đang multi-view.</footer>
+    </section>
+
+    <section class="slide" data-title="Palm orientation">
+      <header>
+        <div class="slide-kicker">05 · Orientation và chống flip</div>
+        <h2>Normal là một bài toán chọn giả thuyết, không chỉ cross product</h2>
+      </header>
+      <div class="content grid-2">
+        <article class="card accent-cyan">
+          <h3>Dựng palm frame</h3>
+          <div class="equation">
+            x = normalize(X<sub>middle</sub>−X<sub>wrist</sub>)<br>
+            y′ = normalize(X<sub>index</sub>−X<sub>pinky</sub>)<br>
+            z = normalize(x × y′), &nbsp; y = z × x
+          </div>
+          <p>Plane normal từ point cloud D455 được fusion với normal từ keypoint geometry; cả hai đều mang confidence riêng.</p>
+        </article>
+        <article class="card accent-purple">
+          <h3>Hai ứng viên ±normal</h3>
+          <div class="equation">R̂<sub>t</sub> = arg min<sub>R∈{R⁺,R⁻}</sub> α d<sub>SO(3)</sub>(R,R̂<sub>t−1|t</sub>) + βE<sub>view</sub>(R) + γE<sub>depth</sub>(R)</div>
+          <ul class="clean">
+            <li><strong>d<sub>SO(3)</sub></strong>: khoảng cách góc quaternion, có dự đoán vận tốc.</li>
+            <li><strong>E<sub>view</sub></strong>: consistency với hướng ngón/handedness ở hai ảnh.</li>
+            <li><strong>E<sub>depth</sub></strong>: normal của palm plane D455 khi plane fit tốt.</li>
+            <li>Hysteresis: chỉ đổi nhánh nếu ứng viên mới tốt hơn đủ lớn qua nhiều frame.</li>
+          </ul>
+        </article>
+      </div>
+      <div class="callout"><strong>Fail-safe:</strong> confidence orientation thấp ⇒ giữ/giảm tốc J5–J7; vị trí cánh tay vẫn có thể tiếp tục nếu confidence của J1–J4 đủ tốt.</div>
+      <footer class="footer-note">Mục tiêu là tránh một frame nhiễu biến thành lệnh xoay cổ tay 180°.</footer>
+    </section>
+
+    <section class="slide" data-title="Đồng bộ thời gian">
+      <header>
+        <div class="slide-kicker">06 · Đồng bộ và vấn đề hệ thống</div>
+        <h2>Hai camera không đồng bộ phần cứng: phải fusion theo thời gian đo</h2>
+      </header>
+      <div class="content grid-2">
+        <article class="card accent-red">
+          <h3>Nếu ghép sai frame</h3>
+          <p>Khi tay đang di chuyển, cùng một landmark ở hai thời điểm khác nhau tạo ra hai tia không giao nhau. Triangulation vẫn trả kết quả nhưng có reprojection error và depth bias lớn.</p>
+          <div class="equation">Δt = |t<sub>D455</sub> − t<sub>laptop</sub>|</div>
+        </article>
+        <article class="card accent-green">
+          <h3>Chiến lược MVP</h3>
+          <ul class="clean">
+            <li>Mỗi nguồn capture vào buffer riêng, timestamp tại thời điểm nhận frame.</li>
+            <li>Ghép nearest frame trong cửa sổ <strong>Δt ≤ τ<sub>sync</sub></strong>.</li>
+            <li>Giảm confidence liên tục theo <strong>c<sub>sync</sub> = exp(−Δt²/2σ<sub>t</sub>²)</strong>.</li>
+            <li>Nếu cần, warp/interpolate landmark theo velocity thay vì interpolate ảnh.</li>
+            <li>Không có pair hợp lệ: xử lý D455-only, không block capture.</li>
+          </ul>
+        </article>
+        <article class="card accent-orange" style="grid-column: 1 / -1;">
+          <h3>Các sai lệch khác cần quản lý</h3>
+          <p>Khác FPS/exposure, rolling shutter laptop, auto-exposure gây blur, USB contention, mirror/handedness, resolution thay đổi, drift extrinsic do camera bị chạm, và inference time không đều.</p>
+        </article>
+      </div>
+      <footer class="footer-note">Timestamp và camera ID phải đi cùng observation tới tận logger và robot command diagnostics.</footer>
+    </section>
+
+    <section class="slide dense" data-title="Kế thừa và tech stack">
+      <header>
+        <div class="slide-kicker">07 · Kế thừa, tự triển khai và tech stack</div>
+        <h2>Dùng lại geometry chuẩn — tự viết fusion cho teleoperation</h2>
+      </header>
+      <div class="content">
+        <table class="table-sm" aria-label="Nguồn kế thừa và phần tự triển khai">
+          <thead><tr><th>Khối</th><th>Nguồn</th><th>Cách sử dụng</th><th>Trạng thái sở hữu</th></tr></thead>
+          <tbody>
+            <tr><td>2D Pose + 21 hand landmarks</td><td>MediaPipe Tasks</td><td>Dùng API/model; chuẩn hóa output hai camera</td><td class="tag-reuse">Kế thừa trực tiếp</td></tr>
+            <tr><td>D455 RGB-D acquisition</td><td>librealsense / pyrealsense2</td><td>Aligned depth, timestamp, filtering</td><td class="tag-reuse">Kế thừa trực tiếp</td></tr>
+            <tr><td>Intrinsic/extrinsic calibration</td><td>OpenCV ChArUco</td><td>Calibrate, undistort, project/reproject</td><td class="tag-reuse">Kế thừa trực tiếp</td></tr>
+            <tr><td>Camera group + triangulation primitives</td><td>aniposelib (BSD)</td><td>Dùng/adapt camera model, triangulate, reprojection</td><td class="tag-reuse">Kế thừa code</td></tr>
+            <tr><td>Weighted triangulation + camera rejection</td><td>Pose2Sim (BSD-3)</td><td>Học/adapt weighted DLT, reprojection gate, filtering</td><td class="tag-adapt">Kế thừa ý tưởng + chọn lọc code</td></tr>
+            <tr><td>Robust nonlinear optimization</td><td>NumPy/SciPy</td><td>least_squares với Huber/Cauchy loss</td><td class="tag-reuse">Dùng thư viện nền</td></tr>
+            <tr><td>Timestamp pairing + dynamic weights</td><td>Thiết kế dự án</td><td>Buffer, confidence calibration, degradation mode</td><td class="tag-own">Tự triển khai</td></tr>
+            <tr><td>RGB-D constrained fusion</td><td>Thiết kế dự án</td><td>Hàm mục tiêu chung reprojection/depth/bone/time</td><td class="tag-own">Tự triển khai</td></tr>
+            <tr><td>Palm hypothesis + anti-flip</td><td>Thiết kế dự án</td><td>±normal, SO(3) continuity, hysteresis, robot gate</td><td class="tag-own">Tự triển khai</td></tr>
+          </tbody>
+        </table>
+        <div class="callout"><strong>Stack chốt:</strong> Python · pyrealsense2/OpenCV capture · MediaPipe · OpenCV ChArUco · aniposelib · NumPy/SciPy · pipeline MuJoCo/OpenArm CAN hiện có. Logging lưu raw observations, timestamp, weights, residuals, fused pose và robot command.</div>
+      </div>
+      <footer class="footer-note">Không OpenPose, chưa ROS 2. POEM/UmeTrack/HaMuCo là related work và hướng nâng cấp, không phải dependency MVP.</footer>
+    </section>
+
+    <section class="slide" data-title="Tài liệu tham khảo">
+      <header>
+        <div class="slide-kicker">08 · Tài liệu nền</div>
+        <h2>Framework và công trình tham khảo</h2>
+      </header>
+      <div class="content">
+        <ol class="refs">
+          <li><a href="https://github.com/lambdaloop/aniposelib">aniposelib</a> — camera calibration, triangulation, reprojection (BSD).</li>
+          <li><a href="https://github.com/perfanalytics/pose2sim">Pose2Sim</a> — confidence-weighted triangulation, camera rejection, filtering (BSD-3).</li>
+          <li><a href="https://joss.theoj.org/papers/10.21105/joss.04362">Pose2Sim: An End-to-End Workflow for 3D Markerless Sports Kinematics</a>, JOSS.</li>
+          <li><a href="https://openaccess.thecvf.com/content_ICCV_2019/html/Iskakov_Learnable_Triangulation_of_Human_Pose_ICCV_2019_paper.html">Learnable Triangulation of Human Pose</a>, ICCV 2019.</li>
+          <li><a href="https://openaccess.thecvf.com/content/CVPR2022/html/Ren_Mining_Multi-View_Information_A_Strong_Self-Supervised_Framework_for_Depth-Based_3D_CVPR_2022_paper.html">Mining Multi-View Information for Depth-Based 3D Hand Pose and Mesh</a>, CVPR 2022.</li>
+          <li><a href="https://openaccess.thecvf.com/content/CVPR2023/html/Yang_POEM_Reconstructing_Hand_in_a_Point_Embedded_Multi-View_Stereo_CVPR_2023_paper.html">POEM: Point Embedded Multi-View Stereo</a>, CVPR 2023.</li>
+          <li><a href="https://github.com/facebookresearch/UmeTrack">UmeTrack: Unified Multi-view End-to-end Hand Tracking for VR</a>, SIGGRAPH Asia 2022.</li>
+          <li><a href="https://openaccess.thecvf.com/content/ICCV2023/papers/Zheng_HaMuCo_Hand_Pose_Estimation_via_Multiview_Collaborative_Self-Supervised_Learning_ICCV_2023_paper.pdf">HaMuCo: Multiview Collaborative Self-Supervised Hand Pose</a>, ICCV 2023.</li>
+          <li><a href="https://docs.opencv.org/4.x/df/d4a/tutorial_charuco_detection.html">OpenCV ChArUco documentation</a>.</li>
+          <li><a href="https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker">MediaPipe Hand Landmarker documentation</a>.</li>
+        </ol>
+      </div>
+      <footer class="footer-note">Các framework học sâu được giữ ở vai trò related work/hướng nâng cấp, không nằm trong dependency runtime MVP.</footer>
+    </section>
+  </main>
+
+  <div class="progress" aria-hidden="true"><div id="progressBar"></div></div>
+  <nav class="controls" aria-label="Điều khiển slide">
+    <button id="prevBtn" type="button" aria-label="Slide trước">←</button>
+    <span class="counter" id="counter">1 / 8</span>
+    <button id="nextBtn" type="button" aria-label="Slide sau">→</button>
+    <button id="printBtn" type="button" aria-label="In hoặc lưu PDF">PDF</button>
+  </nav>
+
+  <script>
+    (() => {
+      const slides = Array.from(document.querySelectorAll('.slide'));
+      const counter = document.getElementById('counter');
+      const progress = document.getElementById('progressBar');
+      let index = Math.max(0, Math.min(slides.length - 1, Number(location.hash.slice(1)) - 1 || 0));
+
+      function show(next) {
+        index = (next + slides.length) % slides.length;
+        slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+        counter.textContent = `${index + 1} / ${slides.length}`;
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        document.title = `${slides[index].dataset.title} — OpenArm Fusion Proposal`;
+        history.replaceState(null, '', `#${index + 1}`);
+      }
+
+      document.getElementById('prevBtn').addEventListener('click', () => show(index - 1));
+      document.getElementById('nextBtn').addEventListener('click', () => show(index + 1));
+      document.getElementById('printBtn').addEventListener('click', () => window.print());
+      document.addEventListener('keydown', (event) => {
+        if (['ArrowRight', 'PageDown', ' '].includes(event.key)) { event.preventDefault(); show(index + 1); }
+        if (['ArrowLeft', 'PageUp'].includes(event.key)) { event.preventDefault(); show(index - 1); }
+        if (event.key === 'Home') show(0);
+        if (event.key === 'End') show(slides.length - 1);
+      });
+      show(index);
+    })();
+  </script>
+</body>
+</html>

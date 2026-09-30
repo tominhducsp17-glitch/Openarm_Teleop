@@ -14,10 +14,22 @@ def _merge(a, b):
 
 
 def load_config(path=None):
-    """Đọc config/default.yaml, rồi ghi đè bằng file của bạn (chỉ cần ghi các khoá muốn đổi)."""
+    """Đọc default, một/nhiều profile, rồi calibration zero của robot.
+
+    Khi truyền nhiều profile, profile đứng sau ghi đè profile đứng trước. Nhờ đó
+    cấu hình camera (ví dụ D435i/USB2) độc lập với cấu hình robot thật.
+    """
     cfg = yaml.safe_load(DEFAULT.read_text())
-    if path:
-        cfg = _merge(cfg, yaml.safe_load(Path(path).read_text()))
+    paths = [] if path is None else ([path] if isinstance(path, (str, Path)) else list(path))
+    for profile_path in paths:
+        cfg = _merge(cfg, yaml.safe_load(Path(profile_path).read_text()))
+    zero_file = cfg.get("robot", {}).get("zero_calibration_file")
+    if zero_file:
+        zp = Path(zero_file)
+        zp = zp if zp.is_absolute() else ROOT / zp
+        if not zp.is_file():
+            raise FileNotFoundError(f"Không thấy file zero calibration: {zp}")
+        cfg = _merge(cfg, yaml.safe_load(zp.read_text()))
     for k in ("pose", "hand"):
         p = Path(cfg["models"][k])
         cfg["models"][k] = str(p if p.is_absolute() else ROOT / p)

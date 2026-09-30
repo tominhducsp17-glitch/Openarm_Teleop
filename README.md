@@ -52,6 +52,7 @@ python scripts/check_kinematics.py             # in trục khớp, thử ngượ
 ```
 
 Robot thật cần thêm `openarm_can` (xem `tools/bringup/`): `sudo apt install python3-openarm-can`.
+RealSense D4xx cần thêm: `pip install -e '.[realsense]'` (SDK đã thử với `pyrealsense2` 2.58.1).
 
 ## Chạy
 
@@ -63,6 +64,8 @@ python scripts/demo_sim.py                      # q/Esc để thoát; --out demo
 python scripts/shadow.py
 python scripts/shadow.py --mode mirror          # đứng đối diện robot, như soi gương
 python scripts/shadow.py --arms right           # chỉ điều khiển tay phải
+python scripts/shadow.py --source realsense      # RealSense RGB MediaPipe + depth metric (USB 3)
+python scripts/shadow.py --config config/camera_laptop_rgb.yaml --arms right  # laptop RGB-only + xoay cổ tay
 
 # 2) Chế độ offline: video quay sẵn -> quỹ đạo (thử pipeline khi chưa có robot, thu demo cho IL)
 python scripts/offline_retarget.py demo.mp4 -o demo.npz --show
@@ -70,13 +73,75 @@ python scripts/replay_npz.py demo.npz            # xem lại trên robot mô ph�
 
 # 3) OpenArm thật (làm theo docs/SAFETY.md)
 python scripts/shadow.py --robot openarm --dry-run                  # motor TẮT: chỉ đọc, kiểm tra chiều khớp
+python tools/bringup/capture_zero_pose.py --iface can0 --side right --config config/d455_wrist_real.yaml
 python scripts/shadow.py --robot openarm --arms right --config config/first_real.yaml   # lần đầu: J1–J4, chậm
+python scripts/shadow.py --robot openarm --arms right --config config/d455_wrist_real.yaml # sau khi xác minh J5–J7
 ```
 
-Phím khi chạy: `SPACE` engage / nhả (ly hợp) · `c` hiệu chuẩn hướng bàn tay (đứng tay thả xuôi, lòng bàn
-tay hướng vào đùi) · `p` về tư thế nghỉ · `q`/`Esc` về tư thế nghỉ rồi thoát.
+### MVP fusion D435i + camera laptop
+
+Lượt 1 chỉ kiểm tra capture/timestamp, không mở CAN và không điều khiển robot:
+
+```bash
+python -u scripts/dual_camera_capture.py
+```
+
+Ghi một đoạn kiểm thử 10 giây (RGB hai camera, depth millimet và CSV timestamp):
+
+```bash
+python -u scripts/dual_camera_capture.py \
+  --record-dir captures/dual_test_01 --record-seconds 10
+```
+
+Profile cố định nằm tại `config/fusion_d435i_laptop.yaml`: D435i RGB-D là camera chính,
+camera tích hợp laptop là camera phụ. Không dùng CAN trước giai đoạn dry-run.
+
+Calibration hình học dùng bảng ChArUco A4 tại `docs/charuco_d435i_laptop_a4.png`. In ngang ở
+`Actual size / 100%`, dán lên một tấm phẳng và đo lại viền bảng phải là `280 x 200 mm`. Sau khi cố định
+hai camera, chạy:
+
+```bash
+python -u scripts/calibrate_dual_cameras.py run
+```
+
+Nếu hiển thị bảng trên iPad với vùng bàn cờ đo được khoảng `220 x 160 mm`, thêm overlay:
+
+```bash
+python -u scripts/calibrate_dual_cameras.py \
+  --config config/charuco_ipad_220x160.yaml run
+```
+
+Chương trình tự thu 30 cặp ảnh khi đủ corner chung và tự lưu
+`config/calibration/d435i_laptop.yaml`; profile chỉ được đánh dấu `accepted: true` khi đạt các ngưỡng RMS,
+epipolar error và baseline trong cấu hình.
+
+Sau khi calibration PASS, chạy debug MediaPipe hai camera + time pairing + weighted triangulation tay phải:
+
+```bash
+python -u scripts/dual_camera_hands.py \
+  --log captures/dual_hands.jsonl
+```
+
+Chấm xanh là reprojection của 21 điểm 3D đã triangulate về từng camera. Công cụ này chưa điều khiển robot;
+`q`/`Esc` để thoát.
+
+Hướng bàn tay tự hiệu chuẩn khi tay thả xuôi, lòng bàn tay hướng vào đùi và đứng yên khoảng 0,6 s; màn hình báo
+`Auto calib ... OK`. Phím khi chạy: `SPACE` engage / nhả (ly hợp) · `c` hiệu chuẩn lại thủ công · `p` về tư thế
+nghỉ · `q`/`Esc` về tư thế nghỉ rồi thoát.
 
 Dùng điện thoại làm camera: cài app phát luồng video (vd. DroidCam, IP Webcam) rồi `--source http://<ip>:<port>/video`.
+
+Dùng Intel RealSense D4xx: cài `pyrealsense2`, cắm vào USB 3 rồi chạy `--source realsense`. Đây là camera duy nhất
+trong pipeline thật: MediaPipe chạy trên RGB của RealSense, depth đã align/lọc được dùng cho vai, khuỷu, cổ tay và fusion
+21 landmark bàn tay về cùng camera frame metric. Dòng `hand: DEPTH/FUSED` trên màn hình cho biết số điểm depth thật,
+số điểm sau fusion và confidence. Cấu hình mặc định không tự chuyển sang camera laptop nếu RealSense mất kết nối.
+Khi bàn tay xòe, point cloud lòng bàn tay được fit thành mặt phẳng và kết hợp với 21 landmark metric để tạo palm
+orientation. Trục đỏ = hướng ngón, xanh lá = ngang lòng bàn tay, xanh dương = pháp tuyến. `PLANE`, `LANDMARK`,
+`HOLD`, `NONE` lần lượt cho biết nguồn/ trạng thái orientation; dữ liệu này điều khiển J5–J7 trong mô phỏng.
+
+`orientation.source` là mode cố định cho cả phiên. Mặc định `depth_required` chỉ dùng RealSense depth và khi mất
+depth sẽ HOLD/NONE, không fallback sang RGB. Profile `camera_laptop_rgb.yaml` chọn `rgb_world`, dùng MediaPipe
+hand world landmarks từ camera laptop và không tự tìm/chuyển sang RealSense.
 
 ## Cách ánh xạ (tóm tắt)
 

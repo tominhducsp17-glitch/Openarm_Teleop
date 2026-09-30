@@ -83,7 +83,30 @@ class ArmKinematics:
     def keypoints(self, q):
         """Vai, khuỷu, cổ tay, đầu kẹp của robot (dùng cho vẽ và kiểm tra va chạm)."""
         P = self.joint_positions(q)
-        return {"shoulder": P[1], "elbow": P[3], "wrist": P[5], "tool": P[8]}
+        # Tâm cổ tay là gốc J7 (P[6]), không phải gốc J6 (P[5]). J6 lệch khỏi
+        # trục giữa 37.5 mm và J7 dịch ngược lại; dùng P[5] làm đường xương khiến
+        # bàn tay trông bị bẻ ra sau khoảng 20 độ ngay cả khi J5-J7 đều bằng 0.
+        return {"shoulder": P[1], "elbow": P[3], "wrist": P[6], "tool": P[8]}
+
+    def display_keypoints(self, q):
+        """Khung xương lý tưởng theo các trục chi dùng bởi retarget.
+
+        Các gốc khớp thật lệch tâm vài cm để lắp motor. Nối thẳng các gốc đó tạo
+        một cánh tay zig-zag và làm cổ tay trông bị gập dù góc khớp bằng zero.
+        Viewer cần biểu diễn hướng chi, nên giữ chiều dài thật nhưng đặt các đoạn
+        dọc theo trục J3 (bắp tay), J5 (cẳng tay) và trục ngón của link7.
+        """
+        q = np.asarray(q, float)
+        P = self.joint_positions(q)
+        shoulder = P[1]
+        upper_len = np.linalg.norm(P[3] - P[1])
+        fore_len = np.linalg.norm(P[6] - P[3])
+        hand_len = np.linalg.norm(self.p_finger)
+        elbow = shoulder + upper_len * self.limb_sign[3] * self.axis_world(q, 3)
+        wrist = elbow + fore_len * self.limb_sign[5] * self.axis_world(q, 5)
+        hand_dir = unit(self.R0(q, 7) @ self.p_finger)
+        tool = wrist + hand_len * hand_dir
+        return {"shoulder": shoulder, "elbow": elbow, "wrist": wrist, "tool": tool}
 
     def R_tool(self, q):
         return self.R0(q, 7) @ self.R_tcp

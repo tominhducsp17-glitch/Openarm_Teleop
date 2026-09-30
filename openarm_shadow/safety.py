@@ -28,6 +28,7 @@ class SafetyGate:
         self.sides = list(kins)
         self.max_vel = np.deg2rad(np.asarray(cfg["max_vel_deg_s"], float))
         self.grip_vel = float(cfg.get("grip_vel_per_s", 1.5))
+        self.velocity_limit_enabled = bool(cfg.get("velocity_limit_enabled", True))
         self.deadman_s = float(cfg["deadman_s"])
         self.blend_s = float(cfg["engage_blend_s"])
         self.lo, self.hi = {}, {}
@@ -91,7 +92,8 @@ class SafetyGate:
         if now - self.t_target > self.deadman_s:
             self.status = "hold (dead-man: mất mục tiêu)"
             return self.cmd
-        ramp = max(0.05, smoothstep((now - self.t_engage) / self.blend_s))
+        ramp = (1.0 if self.blend_s <= 0 else
+                max(0.05, smoothstep((now - self.t_engage) / self.blend_s)))
         new = {}
         for s in self.sides:
             cur = self.cmd[s]
@@ -99,8 +101,11 @@ class SafetyGate:
             goal = np.where(np.isfinite(goal), goal, cur)
             goal[:7] = np.clip(goal[:7], self.lo[s], self.hi[s])
             goal[7] = np.clip(goal[7], 0.0, 1.0)
-            vmax = np.append(self.max_vel, self.grip_vel) * ramp * dt
-            new[s] = cur + np.clip(goal - cur, -vmax, vmax)
+            if self.velocity_limit_enabled:
+                vmax = np.append(self.max_vel, self.grip_vel) * ramp * dt
+                new[s] = cur + np.clip(goal - cur, -vmax, vmax)
+            else:
+                new[s] = goal.copy()
         if self.col_on:
             d_new, d_cur = self.min_arm_distance(new), self.min_arm_distance(self.cmd)
             if d_new < self.col_margin and d_new < d_cur:
